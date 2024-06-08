@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
@@ -59,10 +59,10 @@ namespace PracticeCSharp
                 outboxNOInBase = null;
             }
         }
-        public static void DFS(List<Node> nodes, Node nod, List<Node> component)
+        public static void DFS(Dictionary<String, Node> nodes, Node nod, Dictionary<String, Node> component)
         {
             nod.flag = true;
-            component.Add(nod);
+            component.Add(nod.id, nod);
             if (nod.outbox != null)
             {
                 foreach (Edge parrent in nod.outbox)
@@ -83,34 +83,35 @@ namespace PracticeCSharp
                     }
                 }
             }
-
         }
         public static void Main(String[] args)
         {
-            XElement dataBase = XElement.Load(@"C:\Users\admat\source\repos\с#\PracticeCSharp\SypCassete_current.fog");
+            //XElement dataBase = XElement.Load(@"C:\Users\admat\source\repos\с#\PracticeCSharp\SypCassete_current.fog");
             //XElement dataBase = XElement.Load(@"C:\Users\admat\source\repos\с#\PracticeCSharp\test2.fog");
-            IEnumerable<XElement> elements = dataBase.Elements(); //dataBase.Elements() - получили поток 
-            int numberOfElementsInDatabase = elements.Count();
+            XElement dataBase = XElement.Load(@"C:\Users\admat\source\repos\с#\PracticeCSharp\sypcollection.xml");
+            int numberOfElementsInDatabase = dataBase.Elements().Count();
+            Dictionary<String, XElement> elements = new Dictionary<String, XElement>(numberOfElementsInDatabase);
 
-            List<Node> nodes = new List<Node>(numberOfElementsInDatabase);
-            //преимущество листа - встроенная функция find и возможность заранее указать емкость
-            //тем самым делая операцию добавления за o(1) + он тоже IEnumerable
-            //https://www.claudiobernasconi.ch/2013/07/22/when-to-use-ienumerable-icollection-ilist-and-list/
+            Dictionary<String, Node> nodes = new Dictionary<String, Node>(numberOfElementsInDatabase);
+            //преимущество словаря - поиск элемента по ключу(то  есть по id) за o(1)
 
-            //1) создаем для каждого xml свой node
-            foreach (XElement xml in elements)
+            //1) создаем для каждого xml свой nodе
+            foreach (XElement xml in dataBase.Elements())
             {
                 String id = xml.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about").Value;
-                Node nod = new Node(id, xml);
-                nodes.Add(nod);
+                Node nod = new Node(id, xml); //мб надо вообще поле id убрать из Node?нет,для единообразия с edge оставим
+                nodes.Add(id, nod);
             }
 
 
             //2) идем по nodes и соединяем их с другими nodes
             //побочным действием алгоритма явл выявление висящих ссылок во всей базе, которые мы будем хранить в danglingLinks
-            List<DanglingLink> danglingLinks = new List<DanglingLink>(); 
-            foreach (Node nod in nodes)
+            List<DanglingLink> danglingLinks = new List<DanglingLink>();
+            List<String> notFoundedIds = new List<string>(); 
+            foreach (KeyValuePair<String, Node> kvp in nodes)
             {
+                Node nod = kvp.Value;
+                String id = kvp.Key;
                 foreach (var field in nod.xml.Elements())
                 {
                     var resource = field.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource");
@@ -119,8 +120,9 @@ namespace PracticeCSharp
                         XName predicate = field.Name; 
                         String parrentId = resource.Value;
                         {
-                            Node parrentNod = nodes.Find(x => x.id == parrentId);
-                            if (parrentNod != null)
+                            Node parrentNod = null;
+                            bool founded = nodes.TryGetValue(parrentId, out parrentNod);//в среднем o(1) поиск по всей базе узла с таким id
+                            if (founded)
                             {
                                 if (parrentNod.inbox == null)
                                 {
@@ -139,8 +141,9 @@ namespace PracticeCSharp
                                 {
                                     nod.outboxNOInBase = Enumerable.Empty<DanglingEdge>();
                                 }
-                                 nod.outboxNOInBase = nod.outboxNOInBase.Append(new DanglingEdge(parrentId, predicate));
-                                 danglingLinks.Add(new DanglingLink(nod, parrentId, predicate));
+                                nod.outboxNOInBase = nod.outboxNOInBase.Append(new DanglingEdge(parrentId, predicate));
+                                danglingLinks.Add(new DanglingLink(nod, parrentId, predicate));
+                                notFoundedIds.Add(parrentId); 
                             }
                         }
                     }
@@ -149,28 +152,44 @@ namespace PracticeCSharp
             }
 
             //3) обходим граф, каждый раз ++, когда из основного цикла уходим в DFS
-            List<List<Node>> components = new List<List<Node>>();//хранить компоненты связности
-            foreach (Node nod in nodes)
+            List<Dictionary<String, Node>> components = new List<Dictionary<String, Node>>();//хранить компоненты связности
+            foreach (KeyValuePair<String, Node> kvp in nodes)
             {
+                Node nod = kvp.Value;
                 if (nod.flag == false)
                 {
-                    List<Node> component = new List<Node>();
+                    Dictionary<String, Node> component = new Dictionary<String, Node>();
                     DFS(nodes, nod, component);
                     components.Add(component);
                 }
             }
-
+            
             Console.WriteLine("Всего xmls = " + numberOfElementsInDatabase);
             Console.WriteLine("Всего компонент связности " + components.Count);
             int sum = 0;
             foreach (var component in components)
             {
                 sum += component.Count;
+                Console.WriteLine(component.Count);
+                Console.WriteLine();
             }
             Console.WriteLine();
             Console.WriteLine("Сумма элементов из всех компонент связности " + sum);
             Console.WriteLine("Кол-во висячих ссылок " + danglingLinks.Count);
 
+            notFoundedIds = notFoundedIds.Distinct().ToList();
+            Console.WriteLine("Кол-во уникальных отсутствующих в базе id " + notFoundedIds.Count() + ". Список:");
+            foreach (String id in notFoundedIds)
+            {
+                Console.WriteLine(id);
+            }
+
+            /*
+            Func<String, XElement> idSearch = str => dataBase.Elements()
+              .FirstOrDefault(elm => elm.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about").Value == str);
+
+            Console.WriteLine(idSearch("syp2007_col_portret32007_pd_097"));
+            */
         }
     }
 }
