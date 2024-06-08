@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Xml.Linq;
@@ -9,7 +9,7 @@ namespace PracticeCSharp
     {
         public class ontologyClass
         {
-            public XName name; //стринг неявно преобразовывается в xelement
+            public XName name; //стринг неявно преобразовывается в xname
             public ontologyClass parent;
             public ontologyClass(String name1, ontologyClass parent1)
             {
@@ -70,10 +70,10 @@ namespace PracticeCSharp
         public static void Main(String[] args)
         {
             XElement ontology = XElement.Load(@"C:\Users\admat\source\repos\с#\PracticeCSharp\Ontology_iis-v14.xml");
-            List<ontologyClass> classes = new List<ontologyClass>();
-            List<enumerationType> enumerationTypes = new List<enumerationType>();
-            List<datatypePredicate> dataPredicates = new List<datatypePredicate>();
-            List<objectPredicate> objectPredicates = new List<objectPredicate>();
+            Dictionary<String, ontologyClass> classes = new Dictionary<String, ontologyClass>();
+            Dictionary<String, enumerationType> enumerationTypes = new Dictionary<String, enumerationType>();
+            Dictionary<String, datatypePredicate> dataPredicates = new Dictionary<String, datatypePredicate>();
+            Dictionary<String, objectPredicate> objectPredicates = new Dictionary<String, objectPredicate>();
             int k = 0;
             foreach (XElement xml in ontology.Elements())
             {
@@ -93,17 +93,17 @@ namespace PracticeCSharp
                     {
                         String parrentId = parrent.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource").Value;
                         String parrentName = parrentId.Substring(parrentId.LastIndexOf('/') + 1);
-                        parrentClass = classes.Find(x => x.name == parrentName);
+                        classes.TryGetValue(parrentName, out parrentClass);
                     }
                     //Console.WriteLine("NameOntClass = " + name + "\n");
                     ontologyClass ontClass = new ontologyClass(name, parrentClass);
-                    classes.Add(ontClass);
+                    classes.Add(name, ontClass);
                 } else if (xml.Name == "EnumerationType")
                 {
                     //Console.WriteLine(xml + "\n");
                     String id = xml.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about").Value;
                     String name = id.Substring(id.LastIndexOf('/') + 1);
-                    enumerationTypes.Add(new enumerationType(name, xml));
+                    enumerationTypes.Add(name, new enumerationType(name, xml));
                 } else if (xml.Name == "DatatypeProperty")
                 {
                     //Console.WriteLine(xml + "\n");
@@ -113,18 +113,20 @@ namespace PracticeCSharp
                     String idRange = range.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource").Value;
                     String nameRange = idRange.Substring(idRange.LastIndexOf('/') + 1);
                     //Console.WriteLine(nameRange + "\n");
-                    enumerationType enumeration = enumerationTypes.FirstOrDefault(x => x.name == nameRange);
+                    enumerationType enumeration = null;
+                    enumerationTypes.TryGetValue(nameRange, out enumeration);
 
                     XElement domain = xml.Elements().FirstOrDefault(x => x.Name == "domain");
                     String idDomain = domain.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource").Value;
                     String nameDomain = idDomain.Substring(idDomain.LastIndexOf('/') + 1);
                     //Console.WriteLine(nameDomain + "\n");
-                    ontologyClass cl = classes.FirstOrDefault(x => x.name == nameDomain);
+                    ontologyClass cl = null;
+                    classes.TryGetValue(nameDomain, out cl);
                     if (cl == null)
                     {
                         Console.WriteLine("not founnd " + nameDomain + "class");
                     }
-                    dataPredicates.Add(new datatypePredicate(name, cl, enumeration));
+                    dataPredicates.Add(name, new datatypePredicate(name, cl, enumeration));
                 } else if (xml.Name == "ObjectProperty")
                 {
                     String id = xml.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about").Value;
@@ -133,7 +135,9 @@ namespace PracticeCSharp
                     String idRange = range.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource").Value;
                     String nameRange = idRange.Substring(idRange.LastIndexOf('/') + 1);
                     //Console.WriteLine(nameRange + "\n");
-                    ontologyClass obj = classes.FirstOrDefault(x => x.name == nameRange);
+                    ontologyClass obj = null; 
+                    classes.TryGetValue(nameRange, out obj);
+
                     if (obj == null)
                     {
                      //   Console.WriteLine("not founnd " + nameRange + " class");
@@ -143,35 +147,48 @@ namespace PracticeCSharp
                     String idDomain = domain.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource").Value;
                     String nameDomain = idDomain.Substring(idDomain.LastIndexOf('/') + 1);
                     //Console.WriteLine(nameDomain + "\n");
-                    ontologyClass subj = classes.FirstOrDefault(x => x.name == nameDomain);
+                    ontologyClass subj = null;
+                    classes.TryGetValue(nameDomain, out subj);
                     if (subj == null)
                     {
                         //Console.WriteLine("not founnd " + nameDomain + " class, xml:");
-                        subj = new ontologyClass("archive-member", classes.FirstOrDefault(x => x.name == "entity"));
+                        ontologyClass entityClass = null; //parrent cl для archive-member
+                        classes.TryGetValue("entity", out entityClass);
+                        subj = new ontologyClass("archive-member", entityClass);
                     }
-                    objectPredicates.Add(new objectPredicate(name, subj, obj));
+                    objectPredicates.Add(name, new objectPredicate(name, subj, obj));
                 }
             }
-            XElement dataBase = XElement.Load(@"C:\Users\admat\source\repos\с#\PracticeCSharp\SypCassete_current.fog");
+            //XElement dataBase = XElement.Load(@"C:\Users\admat\source\repos\с#\PracticeCSharp\SypCassete_current.fog");
+            XElement dataBase = XElement.Load(@"C:\Users\admat\source\repos\с#\PracticeCSharp\sypcollection.xml");
             List<XName> notFoundedDatatypePredicates = new List<XName>();
             List<XName> notFoundedObjectPredicates = new List<XName>();
+            List<XName> notFoundedClasses = new List<XName>();
             List<datatypePredicate> FoundedDatatypePredicates = new List<datatypePredicate>();
             List<objectPredicate> FoundedObjectPredicates = new List<objectPredicate>();
             List<ontologyClass> FoundedClasses = new List<ontologyClass>();
             Func<String, XElement> idSearch = str => dataBase.Elements()
                .FirstOrDefault(elm => elm.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about").Value == str);
-            foreach (XElement xml in dataBase.Elements())
-            {
+            foreach (XElement xml in dataBase.Elements().Take(5))
+            {                
                 XName name = xml.Name;
-                ontologyClass className = classes.FirstOrDefault(x => x.name == name);
-                FoundedClasses.Add(className);
+                ontologyClass className = null;
+                classes.TryGetValue(name.ToString(), out className);
+                if (className != null)
+                    FoundedClasses.Add(className);
+                else
+                {
+                    notFoundedClasses.Add(name);
+                    continue;
+                }
                 foreach (XElement field in xml.Elements())
                 {
                     XName pName = field.Name;
                     var resource = field.Attribute("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource");
                     if (resource == null)
                     {
-                        datatypePredicate p = dataPredicates.FirstOrDefault(pr => pr.name == pName);
+                        datatypePredicate p = null; 
+                        dataPredicates.TryGetValue(pName.ToString(), out p);
                         if (p != null)
                         {
                             FoundedDatatypePredicates.Add(p);
@@ -193,13 +210,14 @@ namespace PracticeCSharp
                     }
                     else if (resource != null)
                     {
-                        objectPredicate p = objectPredicates.FirstOrDefault(pr => pr.name == pName);
+                        objectPredicate p = null;
+                        objectPredicates.TryGetValue(pName.ToString(), out p);
                         if (p != null)
                         {
                             FoundedObjectPredicates.Add(p);
                             if (!p.subj.matching(className))
                             {
-                                Console.WriteLine("Класс элемента не соответсвует классу предиката");
+                                Console.WriteLine("Класс элемента не соответствует классу предиката");
                                 Console.WriteLine(xml);
                             }
                             String idResource = resource.Value;
@@ -207,7 +225,8 @@ namespace PracticeCSharp
                             if (obj != null)
                             {
                                 XName objName = obj.Name;
-                                ontologyClass objClass = classes.FirstOrDefault(c => c.name == objName);
+                                ontologyClass objClass = null; 
+                                classes.TryGetValue(objName.ToString(), out objClass);
                                 if (!p.obj.matching(objClass))
                                 {
                                     Console.WriteLine("Класс объекта,  на который ссылается элемент, не соответсвует допустимому объектному классу для этого предиката");
@@ -223,28 +242,53 @@ namespace PracticeCSharp
                     }                    
                 }
             }
+            
+            Console.WriteLine(notFoundedClasses.Distinct().Count() + " не обнаруженных classes:");
+            foreach (XName name in notFoundedClasses.Distinct())
+            {
+                Console.WriteLine(name);
+            }
+            Console.WriteLine();
+
+            Console.WriteLine(FoundedClasses.Distinct().Count() + " обнаруженных classes:");
+            foreach (ontologyClass cl in FoundedClasses.Distinct())
+            {
+                Console.WriteLine(cl.name);
+            }
+            Console.WriteLine();
+
+            Console.WriteLine(classes.Count() + " содержит онтология\n");
+
             Console.WriteLine(notFoundedDatatypePredicates.Distinct().Count() + " не обнаруженных datatype предикатов:");
             foreach (XName name in notFoundedDatatypePredicates.Distinct())
             {
                 Console.WriteLine(name);
             }
+            Console.WriteLine();
+
             Console.WriteLine(FoundedDatatypePredicates.Distinct().Count() + " обнаруженных datatype предикатов:");
             foreach (datatypePredicate pr in FoundedDatatypePredicates.Distinct())
             {
                 Console.WriteLine(pr.name);
             }
+            Console.WriteLine();
+            Console.WriteLine(dataPredicates.Count() + " содержит онтология\n");
 
             Console.WriteLine(notFoundedObjectPredicates.Distinct().Count() + " не обнаруженных object предикатов:");
             foreach (XName name in notFoundedObjectPredicates.Distinct())
             {
                 Console.WriteLine(name);
             }
-            
+            Console.WriteLine();
+
             Console.WriteLine(FoundedObjectPredicates.Distinct().Count() + " обнаруженных object предикатов:");
             foreach (objectPredicate pr in FoundedObjectPredicates.Distinct())
             {
                 Console.WriteLine(pr.name);
             }
+            Console.WriteLine();
+            Console.WriteLine(objectPredicates.Count() + " содержит онтология\n");
+
             /*
             foreach (objectPredicate pred in objectPredicates)
             {
